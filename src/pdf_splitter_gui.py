@@ -25,8 +25,14 @@ def setup_poppler_path():
             # 如果是开发环境
             base_path = os.path.dirname(os.path.abspath(__file__))
         
-        # 将poppler的路径添加到环境变量
-        os.environ['PATH'] = base_path + os.pathsep + os.environ.get('PATH', '')
+        # 将可执行程序目录及打包后的 poppler 子目录加入环境变量
+        candidate_paths = [
+            base_path,
+            os.path.join(base_path, "poppler"),
+        ]
+        existing_paths = [path for path in candidate_paths if os.path.exists(path)]
+        if existing_paths:
+            os.environ['PATH'] = os.pathsep.join(existing_paths) + os.pathsep + os.environ.get('PATH', '')
     elif sys.platform == "darwin":  # macOS
         # 添加Homebrew安装的poppler路径
         brew_poppler_path = "/opt/homebrew/bin"

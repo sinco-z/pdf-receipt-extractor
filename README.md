@@ -85,6 +85,15 @@ pdf-receipt-splitter/
    - **Windows**:
      - 运行 Release 压缩包时无需手动安装，打包产物会携带所需依赖
      - 如果是直接执行源码 `python src/pdf_splitter_gui.py`，仍需自行安装 Poppler，并将其 `bin` 目录加入 `PATH`
+     - 建议使用已验证版本 `24.08.0-0`，部分较新的 Windows 版 Poppler 在某些 PDF 上可能会导致 `pdfinfo` 崩溃
+     - 下载地址：
+       `https://github.com/oschwartz10612/poppler-windows/releases/tag/v24.08.0-0`
+     - 解压后请将类似 `poppler-24.08.0\Library\bin` 的目录加入 `PATH`
+     - 可用以下命令检查是否配置成功：
+       ```powershell
+       where.exe pdfinfo
+       pdfinfo -v
+       ```
    - **Linux**:
      ```bash
      sudo apt-get install poppler-utils
@@ -118,7 +127,11 @@ pdf-receipt-splitter/
 python build_pyinstaller.py
 ```
 
-生成的文件位于 `dist` 目录下。
+Windows 下会在打包过程中自动下载并带上 Poppler。
+
+当前脚本使用的 Windows Poppler 版本为 `24.08.0-0`。
+
+PyInstaller 生成的是 `dist/PDF回执单分割工具/` 目录，实际可执行文件位于该目录内。
 
 ### 使用 Nuitka (性能优先，体积大)
 
@@ -126,7 +139,11 @@ python build_pyinstaller.py
 python build_nuitka.py
 ```
 
-生成的文件位于 `build` 目录下。
+Windows 下会在打包过程中自动下载并带上 Poppler。
+
+当前脚本使用的 Windows Poppler 版本为 `24.08.0-0`。
+
+当前脚本会将产物整理到 `dist` 目录下，而不是 `build` 目录。
 
 ### 发布新版本
 
@@ -134,13 +151,13 @@ python build_nuitka.py
 2. 将生成的文件分别压缩：
    ```bash
    # Windows
-   zip -r pdf-receipt-splitter-windows.zip dist/pdf_splitter_gui/
+   zip -r pdf-receipt-splitter-windows.zip dist/PDF回执单分割工具/
 
    # macOS
-   zip -r pdf-receipt-splitter-macos.zip dist/pdf_splitter_gui/
+   zip -r pdf-receipt-splitter-macos.zip dist/
 
    # Linux
-   zip -r pdf-receipt-splitter-linux.zip dist/pdf_splitter_gui/
+   zip -r pdf-receipt-splitter-linux.zip dist/
    ```
 3. 在 GitHub 创建新的 Release，上传压缩包
 
