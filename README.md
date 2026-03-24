@@ -83,7 +83,8 @@ pdf-receipt-splitter/
      brew install poppler
      ```
    - **Windows**:
-     - 无需手动安装，打包时会自动下载
+     - 运行 Release 压缩包时无需手动安装，打包产物会携带所需依赖
+     - 如果是直接执行源码 `python src/pdf_splitter_gui.py`，仍需自行安装 Poppler，并将其 `bin` 目录加入 `PATH`
    - **Linux**:
      ```bash
      sudo apt-get install poppler-utils

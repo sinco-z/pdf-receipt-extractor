@@ -1,6 +1,6 @@
 import sys
 import os
-import time
+import shutil
 
 from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, QFileDialog, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QProgressBar)
 from PySide6.QtCore import Qt, QThread, Signal
@@ -52,10 +52,7 @@ def setup_poppler_path():
     except Exception as e:
         print(f"pdf2image 库加载失败: {str(e)}")
         
-    # 检查 pdftoppm 是否在路径中
-    import shutil
-    pdftoppm_path = shutil.which('pdftoppm')
-    # print(f"pdftoppm 路径: {pdftoppm_path}")
+    # print(f"pdftoppm 路径: {shutil.which('pdftoppm')}")
 
 class PDFProcessThread(QThread):
     progress = Signal(int, str)  # 进度信号：(进度值, 描述文本)
@@ -81,8 +78,14 @@ class PDFProcessThread(QThread):
                 self.output_path,
                 progress_callback=progress_callback
             )
-            
-            self.finished.emit(True, "处理完成！")
+
+            if not os.path.exists(self.output_path):
+                raise FileNotFoundError(f"输出文件未生成: {self.output_path}")
+
+            if os.path.getsize(self.output_path) == 0:
+                raise ValueError(f"输出文件为空: {self.output_path}")
+
+            self.finished.emit(True, self.output_path)
         except Exception as e:
             self.finished.emit(False, f"处理失败: {str(e)}")
 
@@ -148,6 +151,9 @@ class MainWindow(QMainWindow):
         self.input_pdfs = []  # 存储多个PDF文件路径
         self.output_dir = None
         self.is_processing = False
+        self.success_count = 0
+        self.failed_count = 0
+        self.first_failure_message = None
         
     def select_input_files(self):
         if self.is_processing:
@@ -206,6 +212,13 @@ class MainWindow(QMainWindow):
     def start_processing(self):
         if not self.input_pdfs or not self.output_dir or self.is_processing:
             return
+
+        if sys.platform == "win32" and not shutil.which('pdftoppm'):
+            self.status_label.setText(
+                "未检测到 pdftoppm。源码运行时请先安装 Poppler，并把其 bin 目录加入 PATH。"
+            )
+            self.status_label.setStyleSheet("color: red")
+            return
             
         # 设置处理中状态
         self.is_processing = True
@@ -214,6 +227,9 @@ class MainWindow(QMainWindow):
         self.select_folder_btn.setEnabled(False)
         self.select_output_btn.setEnabled(False)
         self.status_label.setStyleSheet("")
+        self.success_count = 0
+        self.failed_count = 0
+        self.first_failure_message = None
         
         # 开始处理所有PDF文件
         self.current_pdf_index = 0
@@ -228,6 +244,7 @@ class MainWindow(QMainWindow):
         input_pdf = self.input_pdfs[self.current_pdf_index]
         base_name = os.path.splitext(os.path.basename(input_pdf))[0]
         output_path = os.path.join(self.output_dir, f"{base_name}_processed.pdf")
+        self.current_input_pdf = input_pdf
         
         self.status_label.setText(f"正在处理第 {self.current_pdf_index + 1}/{len(self.input_pdfs)} 个文件: {base_name}")
         
@@ -240,16 +257,21 @@ class MainWindow(QMainWindow):
     def update_progress(self, value, text):
         """更新进度条和状态文本"""
         # 计算总体进度
-        file_progress = value / len(self.input_pdfs)
-        total_progress = (self.current_pdf_index * 100 + file_progress) / len(self.input_pdfs)
+        total_progress = ((self.current_pdf_index * 100) + value) / len(self.input_pdfs)
         self.progress_bar.setValue(int(total_progress))
         self.status_label.setText(f"文件 {self.current_pdf_index + 1}/{len(self.input_pdfs)}: {text}")
         
     def on_single_file_processed(self, success, message):
-        if not success:
-            self.status_label.setText(f"处理文件失败: {message}")
+        if success:
+            self.success_count += 1
+            self.status_label.setText(f"已生成文件: {message}")
+            self.status_label.setStyleSheet("")
+        else:
+            self.failed_count += 1
+            if self.first_failure_message is None:
+                self.first_failure_message = message
+            self.status_label.setText(f"处理文件失败: {os.path.basename(self.current_input_pdf)}")
             self.status_label.setStyleSheet("color: red")
-            # 继续处理下一个文件
         
         self.current_pdf_index += 1
         self.process_next_pdf()
@@ -262,10 +284,18 @@ class MainWindow(QMainWindow):
         self.select_output_btn.setEnabled(True)
         
         # 更新状态显示
-        self.status_label.setText(f"所有 {len(self.input_pdfs)} 个文件处理完成！")
-        self.status_label.setStyleSheet("color: green")
-        self.progress_bar.setValue(100)
-        
+        if self.failed_count == 0:
+            self.status_label.setText(
+                f"成功处理 {self.success_count} 个文件，输出目录: {self.output_dir}"
+            )
+            self.status_label.setStyleSheet("color: green")
+            self.progress_bar.setValue(100)
+        else:
+            self.status_label.setText(
+                f"成功 {self.success_count} 个，失败 {self.failed_count} 个。首个失败原因: {self.first_failure_message}"
+            )
+            self.status_label.setStyleSheet("color: red")
+
         # 重置文件选择
         self.input_pdfs = []
         self.file_label.setText("请选择新的PDF文件或文件夹")
