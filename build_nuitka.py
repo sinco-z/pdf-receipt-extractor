@@ -8,33 +8,61 @@ from pathlib import Path
 import time
 
 
+def find_poppler_bin_dir():
+    """返回包含 pdftoppm 可执行文件的目录。"""
+    exe_name = "pdftoppm.exe" if sys.platform == "win32" else "pdftoppm"
+    pdftoppm_path = shutil.which(exe_name)
+    if pdftoppm_path:
+        poppler_dir = os.path.dirname(os.path.abspath(pdftoppm_path))
+        print(f"找到已安装的 Poppler: {poppler_dir}")
+        return poppler_dir
+
+    if sys.platform != "win32":
+        return None
+
+    raw_candidates = [
+        os.path.expandvars(r"%ProgramFiles%\poppler"),
+        os.path.expandvars(r"%ProgramFiles%\poppler\bin"),
+        os.path.expandvars(r"%ProgramFiles(x86)%\poppler"),
+        os.path.expandvars(r"%ProgramFiles(x86)%\poppler\bin"),
+        os.path.expandvars(r"%LocalAppData%\poppler-windows"),
+        os.path.expandvars(r"%LocalAppData%\poppler-windows\Library\bin"),
+        r"C:\poppler",
+        r"C:\poppler\bin",
+        r"C:\Program Files\poppler",
+        r"C:\Program Files\poppler\bin",
+        r"C:\Program Files (x86)\poppler",
+        r"C:\Program Files (x86)\poppler\bin",
+    ]
+    raw_candidates.extend(os.environ.get("PATH", "").split(os.pathsep))
+
+    seen_paths = set()
+    for raw_path in raw_candidates:
+        candidate = raw_path.strip().strip('"')
+        if not candidate:
+            continue
+
+        for path in (
+            candidate,
+            os.path.join(candidate, "bin"),
+            os.path.join(candidate, "Library", "bin"),
+        ):
+            normalized = os.path.normpath(path)
+            if normalized in seen_paths:
+                continue
+            seen_paths.add(normalized)
+
+            pdftoppm_exe = os.path.join(normalized, "pdftoppm.exe")
+            if os.path.exists(pdftoppm_exe):
+                print(f"找到已安装的 Poppler: {normalized}")
+                return normalized
+
+    return None
+
+
 def check_poppler_installed():
     """检查系统是否已安装 Poppler"""
-    # 通用检查：查看 pdftoppm 是否在 PATH 中
-    pdftoppm_path = shutil.which("pdftoppm")
-    if pdftoppm_path:
-        print(f"找到已安装的 Poppler: {os.path.dirname(pdftoppm_path)}")
-        return os.path.dirname(pdftoppm_path)
-    
-    # Windows 特有路径检查
-    if sys.platform == "win32":
-        common_paths = [
-            os.path.expandvars("%ProgramFiles%\\poppler"),
-            os.path.expandvars("%ProgramFiles(x86)%\\poppler"),
-            os.path.expandvars("%LocalAppData%\\poppler-windows\\Library\\bin"),
-            "C:\\poppler\\bin",
-            "C:\\Program Files\\poppler\\bin",
-            "C:\\Program Files (x86)\\poppler\\bin"
-        ]
-        path_dirs = os.environ.get("PATH", "").split(os.pathsep)
-        common_paths.extend([p for p in path_dirs if "poppler" in p.lower()])
-        
-        for path in common_paths:
-            pdftoppm_exe = os.path.join(path, "pdftoppm.exe")
-            if os.path.exists(pdftoppm_exe):
-                print(f"找到已安装的 Poppler: {path}")
-                return path
-    return None
+    return find_poppler_bin_dir()
 
 def check_environment():
     """检查并安装必要的依赖"""
