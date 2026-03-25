@@ -131,7 +131,11 @@ Windows 下会在打包过程中自动下载并带上 Poppler。
 
 当前脚本使用的 Windows Poppler 版本为 `24.08.0-0`。
 
-PyInstaller 生成的是 `dist/PDF回执单分割工具/` 目录，实际可执行文件位于该目录内。
+Windows 下默认生成单文件 `dist/PDF回执单分割工具.exe`。
+
+PyInstaller 运行后同时出现 `build` 和 `dist` 是正常现象：
+- `dist` 是最终产物目录
+- `build` 是中间构建目录，确认打包成功后可以删除
 
 ### 使用 Nuitka (性能优先，体积大)
 
@@ -151,7 +155,7 @@ Windows 下会在打包过程中自动下载并带上 Poppler。
 2. 将生成的文件分别压缩：
    ```bash
    # Windows
-   zip -r pdf-receipt-splitter-windows.zip dist/PDF回执单分割工具/
+   zip -r pdf-receipt-splitter-windows.zip dist/PDF回执单分割工具.exe
 
    # macOS
    zip -r pdf-receipt-splitter-macos.zip dist/

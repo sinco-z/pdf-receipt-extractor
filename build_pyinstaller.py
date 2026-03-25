@@ -177,6 +177,10 @@ def build_with_pyinstaller():
             '--hidden-import=cv2',
             '--hidden-import=numpy',
         ]
+
+        # Windows 默认使用单文件模式，便于分发和自用
+        if sys.platform == 'win32':
+            build_args.append('--onefile')
         
         # 在 Windows 下添加 Poppler 文件
         if sys.platform == 'win32' and temp_poppler_dir:
