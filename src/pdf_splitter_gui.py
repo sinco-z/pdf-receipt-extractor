@@ -1,6 +1,7 @@
 import sys
 import os
 import shutil
+import atexit
 
 from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, QFileDialog, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QProgressBar)
 from PySide6.QtCore import Qt, QThread, Signal
@@ -10,6 +11,68 @@ def import_pdf_processor():
     """延迟导入 PDF 处理模块"""
     from split_pdf_opencv import process_pdf_with_opencv
     return process_pdf_with_opencv
+
+def find_poppler_bin_dir():
+    """返回包含 pdftoppm 可执行文件的目录。"""
+    exe_name = "pdftoppm.exe" if sys.platform == "win32" else "pdftoppm"
+    pdftoppm_path = shutil.which(exe_name)
+    if pdftoppm_path:
+        return os.path.dirname(os.path.abspath(pdftoppm_path))
+
+    if sys.platform != "win32":
+        return None
+
+    if getattr(sys, "frozen", False):
+        source_dir = sys._MEIPASS
+        project_root = os.path.dirname(sys.executable)
+    else:
+        source_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(source_dir)
+
+    raw_candidates = [
+        source_dir,
+        os.path.join(source_dir, "poppler"),
+        project_root,
+        os.path.join(project_root, "poppler"),
+        os.path.join(project_root, "temp_poppler"),
+        os.environ.get("POPPLER_PATH", ""),
+        os.environ.get("POPPLER_BIN", ""),
+        os.path.expandvars(r"%ProgramFiles%\poppler"),
+        os.path.expandvars(r"%ProgramFiles%\poppler\bin"),
+        os.path.expandvars(r"%ProgramFiles(x86)%\poppler"),
+        os.path.expandvars(r"%ProgramFiles(x86)%\poppler\bin"),
+        os.path.expandvars(r"%LocalAppData%\poppler-windows"),
+        os.path.expandvars(r"%LocalAppData%\poppler-windows\Library\bin"),
+        r"C:\poppler",
+        r"C:\poppler\bin",
+        r"C:\Program Files\poppler",
+        r"C:\Program Files\poppler\bin",
+        r"C:\Program Files (x86)\poppler",
+        r"C:\Program Files (x86)\poppler\bin",
+    ]
+    raw_candidates.extend(os.environ.get("PATH", "").split(os.pathsep))
+
+    seen_paths = set()
+    for raw_path in raw_candidates:
+        candidate = raw_path.strip().strip('"')
+        if not candidate:
+            continue
+
+        for path in (
+            candidate,
+            os.path.join(candidate, "bin"),
+            os.path.join(candidate, "Library", "bin"),
+        ):
+            normalized = os.path.normpath(path)
+            if normalized in seen_paths:
+                continue
+            seen_paths.add(normalized)
+
+            pdftoppm_exe = os.path.join(normalized, "pdftoppm.exe")
+            if os.path.exists(pdftoppm_exe):
+                return normalized
+
+    return None
 
 def setup_poppler_path():
     """设置poppler环境"""
@@ -24,13 +87,33 @@ def setup_poppler_path():
         else:
             # 如果是开发环境
             base_path = os.path.dirname(os.path.abspath(__file__))
-        
-        # 将可执行程序目录及打包后的 poppler 子目录加入环境变量
+
+        project_root = os.path.dirname(base_path)
+
+        # 将可执行程序目录、项目目录及常见 poppler 子目录加入环境变量
         candidate_paths = [
             base_path,
             os.path.join(base_path, "poppler"),
+            project_root,
+            os.path.join(project_root, "poppler"),
+            os.path.join(project_root, "temp_poppler"),
         ]
-        existing_paths = [path for path in candidate_paths if os.path.exists(path)]
+
+        poppler_bin_dir = find_poppler_bin_dir()
+        if poppler_bin_dir:
+            candidate_paths.insert(0, poppler_bin_dir)
+
+        existing_paths = []
+        seen_paths = set()
+        for path in candidate_paths:
+            if not os.path.exists(path):
+                continue
+            normalized = os.path.normpath(path)
+            if normalized in seen_paths:
+                continue
+            seen_paths.add(normalized)
+            existing_paths.append(normalized)
+
         if existing_paths:
             os.environ['PATH'] = os.pathsep.join(existing_paths) + os.pathsep + os.environ.get('PATH', '')
     elif sys.platform == "darwin":  # macOS
@@ -59,6 +142,39 @@ def setup_poppler_path():
         print(f"pdf2image 库加载失败: {str(e)}")
         
     # print(f"pdftoppm 路径: {shutil.which('pdftoppm')}")
+
+
+def cleanup_empty_runtime_log_dirs():
+    """清理运行时依赖偶发创建的空 log/logs 目录。"""
+    candidate_roots = [os.getcwd()]
+
+    if getattr(sys, "frozen", False):
+        candidate_roots.append(os.path.dirname(sys.executable))
+        candidate_roots.append(sys._MEIPASS)
+    else:
+        candidate_roots.append(os.path.dirname(os.path.abspath(__file__)))
+
+    seen_roots = set()
+    for root in candidate_roots:
+        if not root:
+            continue
+
+        normalized_root = os.path.normpath(root)
+        if normalized_root in seen_roots or not os.path.isdir(normalized_root):
+            continue
+        seen_roots.add(normalized_root)
+
+        for dirname in ("log", "logs"):
+            log_dir = os.path.join(normalized_root, dirname)
+            if not os.path.isdir(log_dir):
+                continue
+
+            try:
+                if not os.listdir(log_dir):
+                    os.rmdir(log_dir)
+            except OSError:
+                # 目录非空或被占用时直接跳过，避免误删用户目录
+                pass
 
 class PDFProcessThread(QThread):
     progress = Signal(int, str)  # 进度信号：(进度值, 描述文本)
@@ -219,9 +335,9 @@ class MainWindow(QMainWindow):
         if not self.input_pdfs or not self.output_dir or self.is_processing:
             return
 
-        if sys.platform == "win32" and not shutil.which('pdftoppm'):
+        if sys.platform == "win32" and not find_poppler_bin_dir():
             self.status_label.setText(
-                "未检测到 pdftoppm。源码运行时请先安装 Poppler，并把其 bin 目录加入 PATH。"
+                "未检测到 pdftoppm。请确认 Poppler 的 bin 目录已加入系统 PATH；如果刚修改过 PATH，请重启资源管理器或重新登录 Windows 后再试。"
             )
             self.status_label.setStyleSheet("color: red")
             return
@@ -310,6 +426,8 @@ def main():
     # print(f"[{time.time()}] 开始设置环境...")
     # 设置poppler环境
     setup_poppler_path()
+    cleanup_empty_runtime_log_dirs()
+    atexit.register(cleanup_empty_runtime_log_dirs)
     # print(f"[{time.time()}] 环境设置完成")
     
     # print(f"[{time.time()}] 创建应用实例...")
