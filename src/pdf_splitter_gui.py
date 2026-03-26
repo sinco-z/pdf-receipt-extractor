@@ -1,6 +1,5 @@
 import sys
 import os
-import shutil
 import atexit
 
 from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, QFileDialog, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QProgressBar)
@@ -9,139 +8,8 @@ from PySide6.QtCore import Qt, QThread, Signal
 
 def import_pdf_processor():
     """延迟导入 PDF 处理模块"""
-    from split_pdf_opencv import process_pdf_with_opencv
-    return process_pdf_with_opencv
-
-def find_poppler_bin_dir():
-    """返回包含 pdftoppm 可执行文件的目录。"""
-    exe_name = "pdftoppm.exe" if sys.platform == "win32" else "pdftoppm"
-    pdftoppm_path = shutil.which(exe_name)
-    if pdftoppm_path:
-        return os.path.dirname(os.path.abspath(pdftoppm_path))
-
-    if sys.platform != "win32":
-        return None
-
-    if getattr(sys, "frozen", False):
-        source_dir = sys._MEIPASS
-        project_root = os.path.dirname(sys.executable)
-    else:
-        source_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.dirname(source_dir)
-
-    raw_candidates = [
-        source_dir,
-        os.path.join(source_dir, "poppler"),
-        project_root,
-        os.path.join(project_root, "poppler"),
-        os.path.join(project_root, "temp_poppler"),
-        os.environ.get("POPPLER_PATH", ""),
-        os.environ.get("POPPLER_BIN", ""),
-        os.path.expandvars(r"%ProgramFiles%\poppler"),
-        os.path.expandvars(r"%ProgramFiles%\poppler\bin"),
-        os.path.expandvars(r"%ProgramFiles(x86)%\poppler"),
-        os.path.expandvars(r"%ProgramFiles(x86)%\poppler\bin"),
-        os.path.expandvars(r"%LocalAppData%\poppler-windows"),
-        os.path.expandvars(r"%LocalAppData%\poppler-windows\Library\bin"),
-        r"C:\poppler",
-        r"C:\poppler\bin",
-        r"C:\Program Files\poppler",
-        r"C:\Program Files\poppler\bin",
-        r"C:\Program Files (x86)\poppler",
-        r"C:\Program Files (x86)\poppler\bin",
-    ]
-    raw_candidates.extend(os.environ.get("PATH", "").split(os.pathsep))
-
-    seen_paths = set()
-    for raw_path in raw_candidates:
-        candidate = raw_path.strip().strip('"')
-        if not candidate:
-            continue
-
-        for path in (
-            candidate,
-            os.path.join(candidate, "bin"),
-            os.path.join(candidate, "Library", "bin"),
-        ):
-            normalized = os.path.normpath(path)
-            if normalized in seen_paths:
-                continue
-            seen_paths.add(normalized)
-
-            pdftoppm_exe = os.path.join(normalized, "pdftoppm.exe")
-            if os.path.exists(pdftoppm_exe):
-                return normalized
-
-    return None
-
-def setup_poppler_path():
-    """设置poppler环境"""
-    # print(f"当前操作系统: {sys.platform}")
-    # print(f"当前PATH: {os.environ.get('PATH', '')}")
-    
-    if sys.platform == "win32":
-        # 获取应用程序的运行路径
-        if getattr(sys, 'frozen', False):
-            # 如果是打包后的应用
-            base_path = sys._MEIPASS
-        else:
-            # 如果是开发环境
-            base_path = os.path.dirname(os.path.abspath(__file__))
-
-        project_root = os.path.dirname(base_path)
-
-        # 将可执行程序目录、项目目录及常见 poppler 子目录加入环境变量
-        candidate_paths = [
-            base_path,
-            os.path.join(base_path, "poppler"),
-            project_root,
-            os.path.join(project_root, "poppler"),
-            os.path.join(project_root, "temp_poppler"),
-        ]
-
-        poppler_bin_dir = find_poppler_bin_dir()
-        if poppler_bin_dir:
-            candidate_paths.insert(0, poppler_bin_dir)
-
-        existing_paths = []
-        seen_paths = set()
-        for path in candidate_paths:
-            if not os.path.exists(path):
-                continue
-            normalized = os.path.normpath(path)
-            if normalized in seen_paths:
-                continue
-            seen_paths.add(normalized)
-            existing_paths.append(normalized)
-
-        if existing_paths:
-            os.environ['PATH'] = os.pathsep.join(existing_paths) + os.pathsep + os.environ.get('PATH', '')
-    elif sys.platform == "darwin":  # macOS
-        # 添加Homebrew安装的poppler路径
-        brew_poppler_path = "/opt/homebrew/bin"
-        intel_poppler_path = "/usr/local/bin"
-        
-        # print(f"检查 M1/M2 Mac poppler路径: {brew_poppler_path}")
-        # print(f"检查 Intel Mac poppler路径: {intel_poppler_path}")
-        
-        # 检查路径是否存在并添加到PATH
-        if os.path.exists(brew_poppler_path):
-            # print(f"找到 M1/M2 Mac poppler")
-            os.environ['PATH'] = brew_poppler_path + os.pathsep + os.environ.get('PATH', '')
-        if os.path.exists(intel_poppler_path):
-            # print(f"找到 Intel Mac poppler")
-            os.environ['PATH'] = intel_poppler_path + os.pathsep + os.environ.get('PATH', '')
-            
-    # print(f"更新后的PATH: {os.environ.get('PATH', '')}")
-    
-    # 验证poppler是否可用
-    try:
-        from pdf2image.pdf2image import pdfinfo_from_path
-        print("pdf2image 库加载成功")
-    except Exception as e:
-        print(f"pdf2image 库加载失败: {str(e)}")
-        
-    # print(f"pdftoppm 路径: {shutil.which('pdftoppm')}")
+    from split_pdf_pymupdf import process_pdf_with_pymupdf
+    return process_pdf_with_pymupdf
 
 
 def cleanup_empty_runtime_log_dirs():
@@ -188,14 +56,14 @@ class PDFProcessThread(QThread):
     def run(self):
         try:
             # 在实际需要时才导入处理模块
-            process_pdf_with_opencv = import_pdf_processor()
+            process_pdf = import_pdf_processor()
             
             # 定义进度回调函数
             def progress_callback(value, text):
                 self.progress.emit(value, text)
             
             # 处理PDF文件
-            process_pdf_with_opencv(
+            process_pdf(
                 self.input_pdf,
                 self.output_path,
                 progress_callback=progress_callback
@@ -334,13 +202,6 @@ class MainWindow(QMainWindow):
     def start_processing(self):
         if not self.input_pdfs or not self.output_dir or self.is_processing:
             return
-
-        if sys.platform == "win32" and not find_poppler_bin_dir():
-            self.status_label.setText(
-                "未检测到 pdftoppm。请确认 Poppler 的 bin 目录已加入系统 PATH；如果刚修改过 PATH，请重启资源管理器或重新登录 Windows 后再试。"
-            )
-            self.status_label.setStyleSheet("color: red")
-            return
             
         # 设置处理中状态
         self.is_processing = True
@@ -423,18 +284,11 @@ class MainWindow(QMainWindow):
         self.file_label.setText("请选择新的PDF文件或文件夹")
 
 def main():
-    # print(f"[{time.time()}] 开始设置环境...")
-    # 设置poppler环境
-    setup_poppler_path()
     cleanup_empty_runtime_log_dirs()
     atexit.register(cleanup_empty_runtime_log_dirs)
-    # print(f"[{time.time()}] 环境设置完成")
-    
-    # print(f"[{time.time()}] 创建应用实例...")
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
-    # print(f"[{time.time()}] 应用启动完成")
     sys.exit(app.exec())
 
 if __name__ == "__main__":

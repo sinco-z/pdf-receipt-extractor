@@ -1,18 +1,14 @@
 # PDF Receipt Splitter
 
-一个用于自动检测和分割 PDF 文件中回执单的工具。该工具使用 OpenCV 进行智能检测，并通过 PyPDF 进行高质量分割，保持原始 PDF 的清晰度和特性。
+一个用于自动检测和分割 PDF 文件中回执单的工具。该工具使用 PyMuPDF 将 PDF 页面渲染为图像，配合 OpenCV 进行智能检测，并通过 PyPDF 进行高质量分割，保持原始 PDF 的清晰度和特性。
 
 ## 快速开始
 
-### 下载预编译版本
+### 预编译版本说明
 
-访问 [Releases](https://github.com/zxk0029/pdf-receipt-extractor/releases) 页面下载最新版本：
+如果某个版本附带了预编译包，可以在 [Releases](https://github.com/sinco-z/pdf-receipt-extractor/releases) 页面直接下载后解压使用。
 
-- Windows 用户：下载 `pdf-receipt-splitter-windows.zip`
-- macOS 用户：下载 `pdf-receipt-splitter-macos.zip`
-- Linux 用户：下载 `pdf-receipt-splitter-linux.zip`
-
-下载后解压即可使用，无需安装其他依赖。
+当前仓库不保证每个 Release 都提供预编译包。当前默认仅提供 Windows 和 macOS 的打包产物；Linux 用户请优先参考下方的[安装说明](#安装说明)从源码运行，或自行执行打包脚本生成本地可执行文件。
 
 ### 从源码安装
 
@@ -36,10 +32,8 @@
 pdf-receipt-splitter/
 ├── src/                    # 源代码
 │   ├── pdf_splitter_gui.py # GUI界面
-│   └── split_pdf_opencv.py # PDF处理核心逻辑
-├── docs/                   # 文档
-├── tests/                  # 测试文件
-├── examples/               # 示例文件
+│   ├── split_pdf_pymupdf.py # PDF处理核心逻辑
+├── run_windows.bat         # Windows 启动脚本
 ├── build_pyinstaller.py   # PyInstaller 打包脚本 (跨平台，体积小)
 ├── build_nuitka.py        # Nuitka 打包脚本 (性能优先，体积大)
 ├── requirements.txt       # 项目依赖
@@ -60,7 +54,7 @@ pdf-receipt-splitter/
 
 1. 克隆仓库：
    ```bash
-   git clone https://github.com/zxk0029/pdf-receipt-extractor.git
+   git clone https://github.com/sinco-z/pdf-receipt-extractor.git
    cd pdf-receipt-extractor
    ```
 
@@ -76,28 +70,6 @@ pdf-receipt-splitter/
    ```bash
    pip install -r requirements.txt
    ```
-
-4. 安装系统依赖：
-   - **macOS**:
-     ```bash
-     brew install poppler
-     ```
-   - **Windows**:
-     - 运行 Release 压缩包时无需手动安装，打包产物会携带所需依赖
-     - 如果是直接执行源码 `python src/pdf_splitter_gui.py`，仍需自行安装 Poppler，并将其 `bin` 目录加入 `PATH`
-     - 建议使用已验证版本 `24.08.0-0`，部分较新的 Windows 版 Poppler 在某些 PDF 上可能会导致 `pdfinfo` 崩溃
-     - 下载地址：
-       `https://github.com/oschwartz10612/poppler-windows/releases/tag/v24.08.0-0`
-     - 解压后请将类似 `poppler-24.08.0\Library\bin` 的目录加入 `PATH`
-     - 可用以下命令检查是否配置成功：
-       ```powershell
-       where.exe pdfinfo
-       pdfinfo -v
-       ```
-   - **Linux**:
-     ```bash
-     sudo apt-get install poppler-utils
-     ```
 
 ## 使用说明
 
@@ -127,10 +99,6 @@ pdf-receipt-splitter/
 python build_pyinstaller.py
 ```
 
-Windows 下会在打包过程中自动下载并带上 Poppler。
-
-当前脚本使用的 Windows Poppler 版本为 `24.08.0-0`。
-
 Windows 下默认生成单文件 `dist/PDF回执单分割工具.exe`。
 
 PyInstaller 运行后同时出现 `build` 和 `dist` 是正常现象：
@@ -143,10 +111,6 @@ PyInstaller 运行后同时出现 `build` 和 `dist` 是正常现象：
 python build_nuitka.py
 ```
 
-Windows 下会在打包过程中自动下载并带上 Poppler。
-
-当前脚本使用的 Windows Poppler 版本为 `24.08.0-0`。
-
 当前脚本会将产物整理到 `dist` 目录下，而不是 `build` 目录。
 
 ### 发布新版本
@@ -158,12 +122,19 @@ Windows 下会在打包过程中自动下载并带上 Poppler。
    zip -r pdf-receipt-splitter-windows.zip dist/PDF回执单分割工具.exe
 
    # macOS
-   zip -r pdf-receipt-splitter-macos.zip dist/
+   ditto -c -k --sequesterRsrc --keepParent \
+     dist/PDF回执单分割工具.app \
+     dist/pdf-receipt-splitter-macos.zip
 
-   # Linux
-   zip -r pdf-receipt-splitter-linux.zip dist/
    ```
-3. 在 GitHub 创建新的 Release，上传压缩包
+3. 视需要在 GitHub 创建新的 Release 并上传压缩包作为 Release assets
+
+说明：
+- 打包后的二进制文件体积较大，不建议直接提交到 Git 仓库历史中
+- 是否上传到 GitHub Release assets 取决于发布策略；100MB 到 300MB 级别的桌面应用安装包是常见情况
+- 如果某次 Release 未附带安装包，建议在 Release 说明中明确标注“仅发布源码”
+- 当前建议仅上传 Windows 和 macOS 安装包
+- macOS 的 `.app` 建议使用 `ditto` 打包，通常比直接对整个 `dist/` 目录执行 `zip` 更稳妥
 
 ## 贡献指南
 
@@ -182,4 +153,4 @@ Windows 下会在打包过程中自动下载并带上 Poppler。
 - OpenCV 团队
 - PyPDF 团队
 - PySide6/Qt 团队
-- Poppler 开发者 
+- PyMuPDF 团队
